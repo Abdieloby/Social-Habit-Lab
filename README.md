@@ -1,16 +1,40 @@
-# React + Vite
+# Social Habit Lab v4 (Master Edition) 🚀
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A premium gamified habit-tracking application designed for social accountability and high-performance lifestyle design.
 
-Currently, two official plugins are available:
+![Social Habit Lab Preview](https://github.com/Abdieloby/Social-Habit-Lab/blob/main/public/preview.png?raw=true)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## ✨ Features
 
-## React Compiler
+- **🏆 Performance Math Engine**: Precise "Traffic Light" logic (Green/Yellow/Red) weighted by difficulty.
+- **📈 Personal Modifiers**: Subjective difficulty adjustments (0.5x, 1.0x, 1.5x).
+- **🛡️ Squad Accountability**: Real-time mock social feed with Peer Review (Validate/Report).
+- **🏪 Token Economy**: Earn points for habits and spend them on custom rewards in the Store.
+- **🎨 Premium UX**: Glassmorphism aesthetic, fluid animations, and mobile-first design.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🛠️ Technology Stack
 
-## Expanding the ESLint configuration
+- **Frontend**: React 18, Vite.
+- **Styling**: Tailwind CSS (PostCSS).
+- **Icons**: Lucide React.
+- **Animations**: Tailwind-animate.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🚀 Deployment
+
+This project is ready to be deployed on **Vercel** or **Netlify**.
+
+1. Connect your GitHub repository.
+2. Build Command: `npm run build`
+3. Output Directory: `dist`
+
+## 🧪 Math Logic
+
+Each habit follows the "Traffic Light" protocol:
+
+| Difficulty | Green (Success) | Yellow (Partial) | Red (Fail) |
+| :--- | :---: | :---: | :---: |
+| **Easy** | +10 pts | +5 pts | -4 pts |
+| **Medium** | +20 pts | +8 pts | -4 pts |
+| **Hard** | +30 pts | +12 pts | -5 pts |
+
+**Formula**: `Math.ceil(BasePoints * PersonalModifier)`
