@@ -22,8 +22,10 @@ const App = () => {
   const [showPointsLegend, setShowPointsLegend] = useState(false);
   const [showStoreCreator, setShowStoreCreator] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   // AUTH & USER STATE
+  const [authUser, setAuthUser] = useState(null);
   const [user, setUser] = useState(null);
   const [usersMap, setUsersMap] = useState({}); // Cache user data for feed avatars
 
@@ -35,32 +37,36 @@ const App = () => {
     { id: 'lib3', name: 'Leer 20 Páginas', baseWeight: 1 },
     { id: 'lib4', name: 'Beber 2L Agua', baseWeight: 1 },
     { id: 'lib5', name: 'Meditar 10min', baseWeight: 2 },
-  ]); // Can move to Firestore later if needed
+  ]);
 
   const [squad, setSquad] = useState([]);
   const [feed, setFeed] = useState([]);
   const [storeItems, setStoreItems] = useState([]);
 
-  // INIT
+  // INIT AUTH
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        // Subscribe to User Profile
-        const userRef = doc(db, 'users', currentUser.uid);
-        const unsubUser = onSnapshot(userRef, (docSnap) => {
-          if (docSnap.exists()) {
-            setUser({ uid: currentUser.uid, ...docSnap.data() });
-          } else {
-            // Should handle profile creation if missing
-          }
-        });
-        return () => unsubUser();
-      } else {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setAuthUser(u);
+      if (!u) {
         setUser(null);
+        setLoading(false);
       }
     });
-    return () => unsubscribe();
+    return unsub;
   }, []);
+
+  // INIT PROFILE
+  useEffect(() => {
+    if (!authUser) return;
+    const userRef = doc(db, 'users', authUser.uid);
+    const unsub = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setUser({ uid: authUser.uid, ...docSnap.data() });
+      }
+      setLoading(false);
+    });
+    return unsub;
+  }, [authUser]);
 
   // DATA SUBSCRIPTIONS
   useEffect(() => {
@@ -117,11 +123,10 @@ const App = () => {
   // --- 2. AUTH ACTIONS ---
 
   const handleAuth = async (isSignUp, email, password, name, aura) => {
+    showToast(isSignUp ? "Registrando..." : "Iniciando sesión...", null, <Zap size={16} className="animate-spin" />);
     try {
-      let cred;
       if (isSignUp) {
-        cred = await createUserWithEmailAndPassword(auth, email, password);
-        // Create Profile Doc
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
         await setDoc(doc(db, 'users', cred.user.uid), {
           name,
           email,
@@ -131,15 +136,25 @@ const App = () => {
           role: 'Member',
           createdAt: serverTimestamp()
         });
+        showToast("¡Bienvenido, Agente!", "Tu perfil ha sido creado.", <Sparkles size={16} />);
       } else {
-        cred = await signInWithEmailAndPassword(auth, email, password);
+        await signInWithEmailAndPassword(auth, email, password);
+        showToast("Sesión Iniciada", "Cargando tu protocolo...", <CheckCircle2 size={16} />);
       }
     } catch (err) {
-      alert(err.message);
+      console.error(err);
+      let errorMsg = "Ocurrió un error.";
+      if (err.code === 'auth/user-not-found') errorMsg = "Usuario no encontrado.";
+      if (err.code === 'auth/wrong-password') errorMsg = "Contraseña incorrecta.";
+      if (err.code === 'auth/email-already-in-use') errorMsg = "El email ya está en uso.";
+      showToast("Error", errorMsg, <AlertCircle size={16} />);
     }
   };
 
-  const handleSignOut = () => signOut(auth);
+  const handleSignOut = () => {
+    signOut(auth);
+    showToast("Sesión Cerrada", "Hasta pronto.", <LogOut size={16} />);
+  };
 
   // --- 3. LOGIC ---
 
@@ -292,10 +307,21 @@ const App = () => {
 
   // --- 6. SUB-COMPONENTS ---
 
-  const HabitCard = ({ habit }) => {
-    const pGreen = calculateTotalPoints('green', habit.baseWeight, habit.personalMod);
-    const pYellow = calculateTotalPoints('yellow', habit.baseWeight, habit.personalMod);
-    const pRed = calculateTotalPoints('red', habit.baseWeight, habit.personalMod);
+  const HabitCard = ({ habit, onLog, onDelete }) => {
+    const pointsMap = {
+      1: { green: 10, yellow: 5, red: -4 },
+      2: { green: 20, yellow: 8, red: -4 },
+      3: { green: 30, yellow: 12, red: -5 }
+    };
+
+    const calculatePoints = (status, weight, mod) => {
+      if (!status) return 0;
+      return Math.ceil(pointsMap[weight][status] * mod);
+    };
+
+    const pGreen = calculatePoints('green', habit.baseWeight, habit.personalMod);
+    const pYellow = calculatePoints('yellow', habit.baseWeight, habit.personalMod);
+    const pRed = calculatePoints('red', habit.baseWeight, habit.personalMod);
 
     return (
       <div className={`bg-white rounded-3xl p-5 shadow-[0_4px_20px_-12px_rgba(0,0,0,0.1)] border transition-all hover:-translate-y-1 relative group ${habit.isFlagged ? 'border-rose-300 ring-2 ring-rose-100' : 'border-slate-100'}`}>
@@ -314,18 +340,16 @@ const App = () => {
               </div>
             </div>
           </div>
-          <button onClick={() => handleDeleteHabit(habit.id)} className="text-slate-300 hover:text-rose-400">
+          <button onClick={() => onDelete(habit.id)} className="text-slate-300 hover:text-rose-400">
             <Trash2 size={20} />
           </button>
         </div>
-
-        {/* Note input update requires more complex firestore update, skipping for brevity in this iteration */}
 
         <div className="grid grid-cols-3 gap-2">
           {[{ s: 'green', v: pGreen, bg: 'bg-emerald-500', i: '🟢' }, { s: 'yellow', v: pYellow, bg: 'bg-amber-400', i: '🟡' }, { s: 'red', v: pRed, bg: 'bg-rose-500', i: '🔴' }].map((opt) => (
             <button
               key={opt.s}
-              onClick={() => handleLog(habit.id, opt.s)}
+              onClick={() => onLog(habit.id, opt.s)}
               className={`h-14 rounded-2xl flex flex-col items-center justify-center transition-all duration-300 relative overflow-hidden ${habit.status === opt.s ? `${opt.bg} text-white shadow-lg scale-[1.02]` : 'bg-slate-50 text-slate-300 hover:bg-white hover:shadow-md'
                 }`}
             >
@@ -338,7 +362,7 @@ const App = () => {
     );
   };
 
-  const LoginScreen = () => {
+  const LoginScreen = ({ handleAuth }) => {
     const [isSignUp, setIsSignUp] = useState(false);
 
     const handleSubmit = (e) => {
@@ -401,8 +425,24 @@ const App = () => {
 
   // --- RENDER ---
 
-  if (!user && !auth.currentUser) return <LoginScreen />;
-  if (!user) return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white font-bold animate-pulse">Cargando Perfil...</div>;
+  if (loading) {
+    return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold">
+      <Zap size={48} className="text-indigo-500 animate-pulse mb-4" />
+      <span className="animate-pulse">Sincronizando con Social Lab...</span>
+    </div>;
+  }
+
+  if (!user && !authUser) {
+    return <LoginScreen handleAuth={handleAuth} />;
+  }
+
+  if (!user) {
+    return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold">
+      <AlertTriangle size={48} className="text-amber-500 mb-4" />
+      <span>Error: Perfil no encontrado.</span>
+      <button onClick={handleSignOut} className="mt-4 px-6 py-2 bg-indigo-600 rounded-xl">Reintentar</button>
+    </div>;
+  }
 
   return (
     <div className="min-h-screen bg-[#F8F9FC] text-slate-900 font-sans select-none overflow-x-hidden pb-32">
@@ -466,7 +506,7 @@ const App = () => {
             )}
 
             {habits.length === 0 && <div className="text-center p-8 text-slate-300 text-sm italic">No tienes hábitos activos. ¡Crea uno!</div>}
-            {habits.map(habit => <HabitCard key={habit.id} habit={habit} />)}
+            {habits.map(habit => <HabitCard key={habit.id} habit={habit} onLog={handleLog} onDelete={handleDeleteHabit} />)}
           </div>
         )}
 
