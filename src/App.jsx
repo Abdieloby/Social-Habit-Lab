@@ -20,7 +20,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState('my_protocol'); // 'my_protocol' | 'library'
   const [showHabitCreator, setShowHabitCreator] = useState(false);
-  const [showPointsLegend, setShowPointsLegend] = useState(false);
+
   const [showStoreCreator, setShowStoreCreator] = useState(false);
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +41,9 @@ const App = () => {
   const [feed, setFeed] = useState([]);
   const [storeItems, setStoreItems] = useState([]);
   const [selectedStoreIcon, setSelectedStoreIcon] = useState('🎁');
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showPointsLegend, setShowPointsLegend] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   // INIT AUTH
   useEffect(() => {
@@ -223,7 +226,7 @@ const App = () => {
 
   // --- 3. LOGIC ---
 
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
 
   const getBasePoints = (status, baseWeight) => {
     if (!status) return 0;
@@ -1033,7 +1036,7 @@ const App = () => {
                       className="bg-transparent text-xs font-bold text-indigo-600 border-none p-0 focus:ring-0 cursor-pointer"
                     />
                   </div>
-                  <button onClick={() => setShowPointsLegend(!showPointsLegend)} className="text-slate-300 hover:text-indigo-400"><Info size={16} /></button>
+                  <button onClick={() => setShowInfoModal(true)} className="text-slate-300 hover:text-indigo-400"><Info size={16} /></button>
                 </div>
                 {/* Protocol Habits */}
                 {habits.map(habit => (
@@ -1046,6 +1049,67 @@ const App = () => {
                   </div>
                 )}
               </>
+            )}
+
+            {/* Info Modal */}
+            {showInfoModal && (
+              <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setShowInfoModal(false)}>
+                <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-black italic text-2xl text-slate-800">SISTEMA SOCIAL LAB</h3>
+                    <button onClick={() => setShowInfoModal(false)} className="p-2 bg-slate-100 rounded-full"><X size={20} /></button>
+                  </div>
+
+                  <div className="space-y-4 text-sm text-slate-600">
+                    <div className="bg-slate-50 p-4 rounded-2xl">
+                      <h4 className="font-black text-slate-800 mb-2 uppercase text-xs tracking-widest">🧬 Puntos y Dificultad</h4>
+                      <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-bold">
+                        <div className="bg-white p-2 rounded-xl border border-slate-100">
+                          <div className="text-emerald-500 mb-1">Fácil</div>
+                          <div>🟢 10</div>
+                          <div>🟡 5</div>
+                          <div>🔴 -4</div>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-slate-100 ring-2 ring-indigo-50">
+                          <div className="text-indigo-500 mb-1">Medio</div>
+                          <div>🟢 20</div>
+                          <div>🟡 8</div>
+                          <div>🔴 -4</div>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-slate-100">
+                          <div className="text-rose-500 mb-1">Difícil</div>
+                          <div>🟢 30</div>
+                          <div>🟡 12</div>
+                          <div>🔴 -5</div>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-[10px] bg-white p-2 rounded-lg italic">
+                        * Tu "Ajuste Personal" multiplica estos valores.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-2xl">
+                      <h4 className="font-black text-slate-800 mb-2 uppercase text-xs tracking-widest">🎓 Graduación</h4>
+                      <ul className="space-y-2 text-xs">
+                        <li className="flex gap-2">
+                          <span className="text-lg">🌱</span>
+                          <div>
+                            <strong className="block text-slate-900">Instalación (21 Días)</strong>
+                            Recibes una insignia de "Hábito Instalado".
+                          </div>
+                        </li>
+                        <li className="flex gap-2">
+                          <span className="text-lg">👑</span>
+                          <div>
+                            <strong className="block text-slate-900">Maestría (42 Días)</strong>
+                            El hábito se gradúa, se archiva como completado y obtienes una recompensa masiva.
+                          </div>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {viewMode === 'reports' && (
@@ -1103,7 +1167,9 @@ const App = () => {
                     <div>
                       <label className="text-[10px] font-bold text-indigo-400 uppercase">Dificultad Base</label>
                       <select name="hweight" className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-800 mt-1">
-                        <option value="1">Fácil (1)</option>
+                        <option value="1">Fácil (1x Base)</option>
+                        <option value="2">Medio (2x Base)</option>
+                        <option value="3">Difícil (3x Base)</option>
                       </select>
                     </div>
                     <div>
