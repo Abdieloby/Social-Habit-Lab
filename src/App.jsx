@@ -10,7 +10,7 @@ import {
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile
 } from 'firebase/auth';
 import {
-  doc, setDoc, getDoc, updateDoc, collection, onSnapshot, addDoc, query, orderBy, limit, serverTimestamp, increment
+  doc, setDoc, getDoc, updateDoc, collection, onSnapshot, addDoc, query, orderBy, limit, serverTimestamp, increment, deleteDoc
 } from 'firebase/firestore';
 
 // --- SOCIAL HABIT LAB v4 (FIREBASE EDITION) ---
@@ -247,25 +247,46 @@ const App = () => {
 
   const handleCreateHabit = async (e) => {
     e.preventDefault();
-    const newHabit = {
-      name: e.target.hname.value,
-      baseWeight: Number(e.target.hweight.value),
-      personalMod: Number(e.target.hmod.value),
-      status: null,
-      note: '',
-      isFlagged: false,
-      createdAt: serverTimestamp()
-    };
-    await addDoc(collection(db, 'users', user.uid, 'habits'), newHabit);
-    setShowHabitCreator(false);
-    showToast('Protocolo Iniciado', 'Añadido a tu lista.', <Plus size={16} />);
+    if (!user?.uid) {
+      showToast('Error de sesión', 'Por favor, inicia sesión de nuevo.', <AlertCircle size={16} />);
+      return;
+    }
+
+    try {
+      const name = e.target.hname.value;
+      const baseWeight = Number(e.target.hweight.value);
+      const personalMod = Number(e.target.hmod.value);
+
+      if (!name) return;
+
+      const newHabit = {
+        name,
+        baseWeight,
+        personalMod,
+        status: null,
+        note: '',
+        isFlagged: false,
+        createdAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, 'users', user.uid, 'habits'), newHabit);
+      setShowHabitCreator(false);
+      showToast('Protocolo Iniciado', 'Añadido a tu lista 🚀', <Plus size={16} />);
+    } catch (err) {
+      console.error("Error creating habit:", err);
+      showToast('Error de Firebase', 'Asegúrate de que las reglas de Firestore estén en modo prueba.', <AlertCircle size={16} />);
+    }
   };
 
   const handleDeleteHabit = async (id) => {
-    if (confirm('¿Archivar?')) {
-      // deleteDoc(doc(db, 'users', user.uid, 'habits', id));
-      // For now just hide locally or implement deleteDoc
-      alert("Archivado (Implementar deleteDoc)");
+    if (!user?.uid) return;
+    if (confirm('¿Quieres archivar este hábito definitivamente?')) {
+      try {
+        await deleteDoc(doc(db, 'users', user.uid, 'habits', id));
+        showToast('Hábito Archivado', null, <Trash2 size={16} />);
+      } catch (err) {
+        showToast('Error', 'No se pudo eliminar.', <AlertCircle size={16} />);
+      }
     }
   };
 
