@@ -582,6 +582,21 @@ const App = () => {
     }
   };
 
+  const handleEditGlobalHabit = async (gh) => {
+    const nName = prompt('Nombre del Hábito Global:', gh.name);
+    if (!nName) return;
+    const nWeight = prompt('Dificultad Base (1, 2, 3):', gh.baseWeight);
+    if (!nWeight) return;
+    const nNote = prompt('Nota/Descripción:', gh.note || '');
+
+    await updateDoc(doc(db, 'habits', gh.id), {
+      name: nName,
+      baseWeight: Number(nWeight),
+      note: nNote || ''
+    });
+    showToast('Biblioteca Actualizada', 'Cambios guardados.', <Globe size={16} />);
+  };
+
   const handleOpenProfile = (targetUser) => {
     setViewingProfile(targetUser);
   };
@@ -1044,6 +1059,11 @@ const App = () => {
                 <div className="flex justify-between items-center px-1">
                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Biblioteca Global</h3>
                 </div>
+                <button onClick={() => setShowHabitCreator(!showHabitCreator)} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-2 mb-4">
+                  <Plus size={20} />
+                  <span>Crear Nuevo Hábito Global</span>
+                </button>
+
                 <div className="space-y-3">
                   {globalHabits.map(gh => (
                     <div key={gh.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
@@ -1053,7 +1073,10 @@ const App = () => {
                       </div>
                       <div className="flex gap-2">
                         {user.role === 'Admin' || gh.createdBy === user.uid ? (
-                          <button onClick={() => handleDeleteGlobalHabit(gh.id, gh.name)} className="p-2 text-slate-200 hover:text-rose-300"><Trash2 size={16} /></button>
+                          <>
+                            <button onClick={() => handleEditGlobalHabit(gh)} className="p-2 text-slate-200 hover:text-indigo-400"><Edit size={16} /></button>
+                            <button onClick={() => handleDeleteGlobalHabit(gh.id, gh.name)} className="p-2 text-slate-200 hover:text-rose-300"><Trash2 size={16} /></button>
+                          </>
                         ) : null}
                         <button onClick={() => handleAdoptHabit(gh)} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl font-bold text-xs hover:bg-indigo-100">Adoptar</button>
                       </div>
