@@ -18,6 +18,7 @@ import {
 const App = () => {
   // --- 1. GESTIÓN DE ESTADO ---
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [viewMode, setViewMode] = useState('my_protocol'); // 'my_protocol' | 'library'
   const [showHabitCreator, setShowHabitCreator] = useState(false);
   const [showPointsLegend, setShowPointsLegend] = useState(false);
   const [showStoreCreator, setShowStoreCreator] = useState(false);
@@ -29,16 +30,13 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [usersMap, setUsersMap] = useState({}); // Cache user data for feed avatars
 
+  // PROFILE INSPECTOR STATE
+  const [viewingProfile, setViewingProfile] = useState(null);
+  const [viewingProfileHabits, setViewingProfileHabits] = useState([]);
+
   // DATA COLLECTIONS
   const [habits, setHabits] = useState([]);
-  const [habitLibrary, setHabitLibrary] = useState([
-    { id: 'lib1', name: 'Sin Azúcar', baseWeight: 3 },
-    { id: 'lib2', name: 'Gimnasio', baseWeight: 3 },
-    { id: 'lib3', name: 'Leer 20 Páginas', baseWeight: 1 },
-    { id: 'lib4', name: 'Beber 2L Agua', baseWeight: 1 },
-    { id: 'lib5', name: 'Meditar 10min', baseWeight: 2 },
-  ]);
-
+  const [globalHabits, setGlobalHabits] = useState([]); // Global Library
   const [squad, setSquad] = useState([]);
   const [feed, setFeed] = useState([]);
   const [storeItems, setStoreItems] = useState([]);
@@ -101,13 +99,30 @@ const App = () => {
       setStoreItems(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
+    // 5. Global Habits Library
+    const globalHabitsRef = collection(db, 'habits');
+    const unsubGlobal = onSnapshot(query(globalHabitsRef, orderBy('createdAt', 'desc')), (snapshot) => {
+      setGlobalHabits(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     return () => {
       unsubHabits();
       unsubSquad();
       unsubFeed();
       unsubStore();
+      unsubGlobal();
     };
   }, [user?.uid]);
+
+  // PROFILE INSPECTOR EFFECT
+  useEffect(() => {
+    if (!viewingProfile) return;
+    const q = query(collection(db, 'users', viewingProfile.id, 'habits'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      setViewingProfileHabits(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [viewingProfile]);
 
   // HELPERS UI
   const showToast = (msg, subMsg = null, icon = <Zap size={16} />) => {
@@ -185,7 +200,6 @@ const App = () => {
     const newPoints = calculateTotalPoints(newStatus, habit.baseWeight, habit.personalMod);
     const pointDiff = newPoints - oldPoints;
 
-    // Optimistic UI handled by Firestore listener, but let's do the writes
     const userRef = doc(db, 'users', user.uid);
     const habitRef = doc(db, 'users', user.uid, 'habits', habitId);
 
@@ -200,7 +214,6 @@ const App = () => {
         showToast(`Corrección`, `${oldEmoji} > ${statusEmoji} (${pointDiff > 0 ? '+' : ''}${pointDiff})`, <Edit3 size={16} />);
       } else {
         showToast(`Registrado ${statusEmoji}`, `${newPoints > 0 ? '+' : ''}${newPoints} pts`, <CheckCircle2 size={16} />);
-        // Add Feed Item
         await addDoc(collection(db, 'feed'), {
           userId: user.uid,
           user: user.name,
@@ -235,7 +248,6 @@ const App = () => {
   };
 
   const handleNudge = (name) => {
-    // Could be implemented via cloud functions or simple notification collection
     showToast(`¡Has dado un toque a ${name}!`, "Se envió una notificación.", <Bell size={16} />);
   };
 
@@ -256,7 +268,7 @@ const App = () => {
 
   const handleDeleteStoreItem = async (id) => {
     if (confirm('¿Borrar?')) {
-      await updateDoc(doc(db, 'store', id), { deleted: true }); // Soft delete or deleteDoc
+      await updateDoc(doc(db, 'store', id), { deleted: true });
     }
   };
 
@@ -271,38 +283,149 @@ const App = () => {
       const name = e.target.hname.value;
       const baseWeight = Number(e.target.hweight.value);
       const personalMod = Number(e.target.hmod.value);
+      const note = e.target.hnote?.value || '';
 
       if (!name) return;
 
-      const newHabit = {
+      // 1. Create in Global Library
+      const globalDr = await addDoc(collection(db, 'habits'), {
+        name,
+        baseWeight,
+        note,
+        createdBy: user.uid,
+        createdAt: serverTimestamp()
+      });
+
+      // 2. Auto-Adopt to My Protocol (if viewing my_protocol or generic add)
+      // Usually user wants to adopt what they created
+      const newPersonalHabit = {
+        globalId: globalDr.id,
         name,
         baseWeight,
         personalMod,
         status: null,
-        note: '',
+        note,
         isFlagged: false,
         createdAt: serverTimestamp()
       };
 
-      await addDoc(collection(db, 'users', user.uid, 'habits'), newHabit);
+      await addDoc(collection(db, 'users', user.uid, 'habits'), newPersonalHabit);
+
+      // 3. Log to Feed
+      await addDoc(collection(db, 'feed'), {
+        userId: user.uid,
+        user: user.name,
+        aura: user.auraColor,
+        action: `creó un nuevo hábito global: "${name}"`,
+        type: 'habit_create',
+        timestamp: serverTimestamp()
+      });
+
       setShowHabitCreator(false);
-      showToast('Protocolo Iniciado', 'Añadido a tu lista 🚀', <Plus size={16} />);
+      showToast('Hábito Global Creado', 'Añadido a la biblioteca y a tu lista.', <Globe size={16} />);
     } catch (err) {
       console.error("Error creating habit:", err);
-      showToast('Error de Firebase', 'Asegúrate de que las reglas de Firestore estén en modo prueba.', <AlertCircle size={16} />);
+      showToast('Error', 'No se pudo crear. Revisa permisos.', <AlertCircle size={16} />);
     }
+  };
+
+  const handleAdoptHabit = async (globalHabit, personalMod = 1.0) => {
+    const exists = habits.find(h => h.globalId === globalHabit.id || h.name === globalHabit.name);
+    if (exists) {
+      showToast('Ya tienes este hábito', 'Modifícalo en tu lista.', <Info size={16} />);
+      return;
+    }
+
+    const newPersonalHabit = {
+      globalId: globalHabit.id,
+      name: globalHabit.name,
+      baseWeight: globalHabit.baseWeight,
+      personalMod: personalMod,
+      status: null,
+      note: globalHabit.note || '',
+      isFlagged: false,
+      createdAt: serverTimestamp()
+    };
+
+    await addDoc(collection(db, 'users', user.uid, 'habits'), newPersonalHabit);
+    showToast('Hábito Adoptado', 'Añadido a tu protocolo.', <CheckCircle2 size={16} />);
   };
 
   const handleDeleteHabit = async (id) => {
     if (!user?.uid) return;
-    if (confirm('¿Quieres archivar este hábito definitivamente?')) {
+    if (confirm('¿Archivar este hábito? Si lo completaste hoy, perderás los puntos.')) {
       try {
-        await deleteDoc(doc(db, 'users', user.uid, 'habits', id));
-        showToast('Hábito Archivado', null, <Trash2 size={16} />);
+        const habitRef = doc(db, 'users', user.uid, 'habits', id);
+        const habitSnap = await getDoc(habitRef);
+
+        if (habitSnap.exists()) {
+          const hData = habitSnap.data();
+
+          // Anti-Cheat: Deduct points if marked today
+          let pointsToDeduct = 0;
+          if (hData.status && hData.lastUpdated) {
+            const updatedDate = hData.lastUpdated.toDate();
+            const today = new Date();
+            const isToday = updatedDate.getDate() === today.getDate() &&
+              updatedDate.getMonth() === today.getMonth() &&
+              updatedDate.getFullYear() === today.getFullYear();
+
+            if (isToday) {
+              const pointsMap = {
+                1: { green: 10, yellow: 5, red: -4 },
+                2: { green: 20, yellow: 8, red: -4 },
+                3: { green: 30, yellow: 12, red: -5 }
+              };
+              const base = pointsMap[hData.baseWeight][hData.status] || 0;
+              pointsToDeduct = Math.ceil(base * hData.personalMod);
+            }
+          }
+
+          if (pointsToDeduct !== 0) {
+            await updateDoc(doc(db, 'users', user.uid), { points: increment(-pointsToDeduct) });
+            await addDoc(collection(db, 'feed'), {
+              userId: user.uid,
+              user: user.name,
+              aura: user.auraColor,
+              action: `eliminó "${hData.name}" y perdió ${pointsToDeduct} pts (Corrección Anti-Cheat)`,
+              type: 'habit_delete',
+              timestamp: serverTimestamp()
+            });
+            showToast('Corrección Aplicada', `Se dedujeron ${pointsToDeduct} puntos.`, <ShieldAlert size={16} />);
+          } else {
+            showToast('Hábito Archivado', null, <Trash2 size={16} />);
+          }
+
+          await deleteDoc(habitRef);
+        }
       } catch (err) {
+        console.error(err);
         showToast('Error', 'No se pudo eliminar.', <AlertCircle size={16} />);
       }
     }
+  };
+
+  const handleDeleteGlobalHabit = async (globalId, name) => {
+    if (confirm(`¿Eliminar "${name}" de la LIBRERÍA GLOBAL? Nadie más podrá adoptarlo.`)) {
+      try {
+        await deleteDoc(doc(db, 'habits', globalId));
+        showToast('Hábito Global Eliminado', 'Ya no aparece en la biblioteca.', <Globe size={16} />);
+        await addDoc(collection(db, 'feed'), {
+          userId: user.uid,
+          user: user.name,
+          aura: user.auraColor,
+          action: `eliminó "${name}" de la Biblioteca Global`,
+          type: 'habit_delete_global',
+          timestamp: serverTimestamp()
+        });
+      } catch (e) {
+        showToast('Error', 'No tienes permisos.', <AlertCircle size={16} />);
+      }
+    }
+  };
+
+  const handleOpenProfile = (targetUser) => {
+    setViewingProfile(targetUser);
   };
 
   // --- 6. SUB-COMPONENTS ---
@@ -458,58 +581,120 @@ const App = () => {
       )}
 
       {/* Header */}
-      <header className="px-6 pt-12 pb-4 sticky top-0 bg-[#F8F9FC]/80 backdrop-blur-xl z-40 border-b border-white/50 flex justify-between items-center">
-        <div><h1 className="text-2xl font-black italic tracking-tighter text-slate-900">SOCIAL LAB</h1></div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-3 bg-white p-2 pr-4 rounded-full border border-slate-100 shadow-sm">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: user.auraColor }}>{user.name[0]}</div>
-            <div className="flex flex-col"><span className="text-[10px] font-bold text-slate-400 uppercase leading-none">Banco</span><span className="text-sm font-black text-slate-800 leading-none">{user.points}</span></div>
+      <header className="px-6 pt-12 pb-4 flex justify-between items-center bg-white shadow-sm rounded-b-[2.5rem] mb-6">
+        <div>
+          <h2 className="text-3xl font-black italic text-slate-900 tracking-tighter">HOLA, {user.name.split(' ')[0].toUpperCase()}</h2>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold uppercase tracking-wider rounded-md">Racha {user.streak} días</span>
+            <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider rounded-md">{user.points} pts</span>
           </div>
-          <button onClick={handleSignOut} className="p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-rose-100 hover:text-rose-500"><LogOut size={16} /></button>
+        </div>
+        <div className="relative">
+          <div className="w-12 h-12 rounded-full border-4 border-slate-50 flex items-center justify-center text-white font-bold text-xl shadow-lg" style={{ backgroundColor: user.auraColor }}>
+            {user.name[0]}
+          </div>
+          <div className="absolute -bottom-1 -right-1 bg-slate-900 text-[10px] text-white font-bold px-1.5 py-0.5 rounded-full border-2 border-white">NV.1</div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="px-6 py-6 max-w-lg mx-auto">
+      <main className="px-6 space-y-8">
 
+        {/* DASHBOARD TAB */}
         {activeTab === 'dashboard' && (
           <div className="space-y-4 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center px-1">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Mi Protocolo</h3>
-              <div className="flex gap-2">
-                <button onClick={() => setShowPointsLegend(!showPointsLegend)} className="px-2 py-1 rounded-lg bg-slate-100 text-slate-400"><Info size={16} /></button>
-                <button onClick={() => setShowHabitCreator(!showHabitCreator)} className="px-3 py-1 rounded-lg bg-indigo-500 text-white text-xs font-bold flex items-center gap-1"><Plus size={16} /> Hábito</button>
-              </div>
+            {/* View Toggle */}
+            <div className="flex p-1 bg-slate-200 rounded-xl mb-4">
+              <button onClick={() => setViewMode('my_protocol')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === 'my_protocol' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>Mi Protocolo</button>
+              <button onClick={() => setViewMode('library')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === 'library' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>Biblioteca Global</button>
             </div>
 
-            {showPointsLegend && (
-              <div className="bg-slate-900 text-white p-4 rounded-3xl mb-4 animate-in slide-in-from-top-4">
-                <p className="text-xs font-medium text-slate-400 mb-2">Sistema de Puntos (Base)</p>
-                <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold">
-                  <div className="bg-white/10 p-2 rounded-xl text-emerald-400">🟢 +10/20/30</div>
-                  <div className="bg-white/10 p-2 rounded-xl text-amber-400">🟡 +5/8/12</div>
-                  <div className="bg-white/10 p-2 rounded-xl text-rose-400">🔴 -4/-5</div>
+            {viewMode === 'my_protocol' ? (
+              <>
+                <div className="flex justify-between items-center px-1">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Tu Protocolo</h3>
+                  <button onClick={() => setShowPointsLegend(!showPointsLegend)} className="text-slate-300 hover:text-indigo-400"><Info size={16} /></button>
+                </div>
+                {/* Protocol Habits */}
+                {habits.map(habit => (
+                  <HabitCard key={habit.id} habit={habit} onLog={handleLog} onDelete={handleDeleteHabit} />
+                ))}
+                {habits.length === 0 && (
+                  <div className="text-center py-12 opacity-50">
+                    <p className="font-bold text-slate-400">Sin hábitos activos</p>
+                    <p className="text-xs text-slate-300">Crea o adopta uno nuevo</p>
+                  </div>
+                )}
+                {/* Create Trigger */}
+                <button onClick={() => setShowHabitCreator(!showHabitCreator)} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center gap-2">
+                  <Plus size={20} />
+                  <span>Crear Nuevo Hábito</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between items-center px-1">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Biblioteca Global</h3>
+                </div>
+                <div className="space-y-3">
+                  {globalHabits.map(gh => (
+                    <div key={gh.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
+                      <div>
+                        <h4 className="font-bold text-slate-800">{gh.name}</h4>
+                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-bold text-slate-500 uppercase">Dif: {gh.baseWeight}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {user.role === 'Admin' || gh.createdBy === user.uid ? (
+                          <button onClick={() => handleDeleteGlobalHabit(gh.id, gh.name)} className="p-2 text-slate-200 hover:text-rose-300"><Trash2 size={16} /></button>
+                        ) : null}
+                        <button onClick={() => handleAdoptHabit(gh)} className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl font-bold text-xs hover:bg-indigo-100">Adoptar</button>
+                      </div>
+                    </div>
+                  ))}
+                  {globalHabits.length === 0 && <div className="text-center text-slate-300 italic">Biblioteca vacía.</div>}
+                </div>
+              </>
+            )}
+
+            {/* Creator Modal */}
+            {showHabitCreator && (
+              <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
+                <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl space-y-4 animate-in slide-in-from-bottom-10 duration-300">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-black italic text-2xl text-slate-800">NUEVO HÁBITO</h3>
+                    <button onClick={() => setShowHabitCreator(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
+                  </div>
+                  <form onSubmit={handleCreateHabit} className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-indigo-400 uppercase">Nombre del Hábito</label>
+                      <input name="hname" required placeholder="Ej. Leer 5 páginas" className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 mt-1" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-bold text-indigo-400 uppercase">Dificultad Base</label>
+                        <select name="hweight" className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-800 mt-1">
+                          <option value="1">Fácil (1)</option>
+                          <option value="2">Medio (2)</option>
+                          <option value="3">Difícil (3)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-indigo-400 uppercase">Tu Ajuste</label>
+                        <select name="hmod" className="w-full bg-slate-50 border-none rounded-xl p-3 font-bold text-slate-800 mt-1">
+                          <option value="1">Normal (1x)</option>
+                          <option value="1.5">Intenso (1.5x)</option>
+                          <option value="2">Épico (2x)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:scale-[1.02] transition-transform">Crear y Adoptar</button>
+                  </form>
                 </div>
               </div>
             )}
-
-            {showHabitCreator && (
-              <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-3xl mb-4 animate-in slide-in-from-top-4">
-                <h4 className="font-bold text-indigo-900 text-sm mb-2">Nuevo Hábito</h4>
-                <form onSubmit={handleCreateHabit} className="space-y-3">
-                  <input name="hname" required placeholder="Nombre (ej. Leer)" className="w-full p-2 rounded-xl border-none text-sm" />
-                  <select name="hweight" className="w-full p-2 rounded-xl text-sm"><option value="1">Fácil Base</option><option value="2">Medio Base</option><option value="3">Difícil Base</option></select>
-                  <select name="hmod" className="w-full p-2 rounded-xl text-sm"><option value="1.0">Normal (1.0x)</option><option value="1.5">Difícil (1.5x)</option><option value="0.5">Fácil (0.5x)</option></select>
-                  <button className="w-full bg-indigo-600 text-white p-2 rounded-xl font-bold text-sm">Crear</button>
-                </form>
-              </div>
-            )}
-
-            {habits.length === 0 && <div className="text-center p-8 text-slate-300 text-sm italic">No tienes hábitos activos. ¡Crea uno!</div>}
-            {habits.map(habit => <HabitCard key={habit.id} habit={habit} onLog={handleLog} onDelete={handleDeleteHabit} />)}
           </div>
         )}
 
+        {/* SQUAD TAB */}
         {activeTab === 'squad' && (
           <div className="space-y-5 animate-in fade-in duration-500">
             <div className="bg-indigo-600 rounded-3xl p-6 text-center text-white shadow-xl relative overflow-hidden">
@@ -517,7 +702,7 @@ const App = () => {
               <p className="text-indigo-200 text-xs relative z-10">Comunidad Activa</p>
             </div>
             {squad.map((member, idx) => (
-              <div key={member.id} className="bg-white p-4 rounded-3xl flex items-center justify-between shadow-sm border border-slate-100">
+              <div key={member.id} onClick={() => handleOpenProfile(member)} className="bg-white p-4 rounded-3xl flex items-center justify-between shadow-sm border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors">
                 <div className="flex items-center gap-4">
                   <div className="font-black text-slate-200 text-xl w-6">{idx + 1}</div>
                   <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md" style={{ backgroundColor: member.auraColor }}>{member.name?.[0]}</div>
@@ -531,15 +716,77 @@ const App = () => {
                 </div>
                 {member.id !== user.uid && (
                   <div className="flex gap-2">
-                    <button onClick={() => handleNudge(member.name)} className="bg-slate-50 p-3 rounded-2xl text-slate-400 active:scale-95"><Bell size={18} /></button>
-                    <button onClick={() => handleKudos(member)} className="bg-pink-50 text-pink-500 p-3 rounded-2xl active:scale-95"><Heart size={18} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleNudge(member.name); }} className="bg-slate-50 p-3 rounded-2xl text-slate-400 active:scale-95 hover:bg-white"><Bell size={18} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleKudos(member); }} className="bg-pink-50 text-pink-500 p-3 rounded-2xl active:scale-95 hover:bg-pink-100"><Heart size={18} /></button>
                   </div>
                 )}
+              </div>
+            ))}
+
+            {/* Profile Inspector Modal */}
+            {viewingProfile && (
+              <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setViewingProfile(null)}>
+                <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-black italic text-2xl text-slate-800">EXPEDIENTE</h3>
+                    <button onClick={() => setViewingProfile(null)} className="p-2 bg-slate-100 rounded-full"><X size={20} /></button>
+                  </div>
+                  <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-3xl">
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-3xl shadow-lg" style={{ backgroundColor: viewingProfile.auraColor }}>{viewingProfile.name?.[0]}</div>
+                    <div>
+                      <h4 className="font-bold text-xl text-slate-900">{viewingProfile.name}</h4>
+                      <div className="flex gap-3 text-xs font-bold text-slate-500 mt-1">
+                        <span>{viewingProfile.points} pts</span>
+                        <span>{viewingProfile.streak} días racha</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[50vh] overflow-y-auto space-y-2 pr-2">
+                    <h5 className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Protocolo Activo</h5>
+                    {viewingProfileHabits.map(h => (
+                      <div key={h.id} className="bg-white border border-slate-100 p-4 rounded-2xl flex justify-between items-center">
+                        <div>
+                          <div className="font-bold text-slate-700">{h.name}</div>
+                          <div className="flex gap-2 mt-1">
+                            <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-bold text-slate-500">Dif: {h.baseWeight}</span>
+                            <span className="text-[10px] bg-indigo-50 px-2 py-0.5 rounded font-bold text-indigo-500">Mod: {h.personalMod}x</span>
+                          </div>
+                        </div>
+                        <div className="text-xl">
+                          {h.status === 'green' ? '🟢' : h.status === 'yellow' ? '🟡' : h.status === 'red' ? '🔴' : '⚪'}
+                        </div>
+                      </div>
+                    ))}
+                    {viewingProfileHabits.length === 0 && <div className="text-center text-slate-400 text-xs italic py-4">Sin hábitos visibles.</div>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* FEED TAB */}
+        {activeTab === 'feed' && (
+          <div className="space-y-4 animate-in fade-in duration-500 pb-24">
+            <div className="flex items-center justify-between px-1 mb-2">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Actividad Reciente</h3>
+            </div>
+            {feed.map(item => (
+              <div key={item.id} className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex gap-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-md" style={{ backgroundColor: item.aura || '#ccc' }}>
+                  {item.user?.[0]}
+                </div>
+                <div>
+                  <p className="text-sm text-slate-800 leading-tight"><span className="font-bold">{item.user}</span> {item.action}</p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-1">Hace un momento</p>
+                </div>
               </div>
             ))}
           </div>
         )}
 
+        {/* STORE TAB */}
         {activeTab === 'store' && (
           <div className="space-y-4 animate-in slide-in-from-bottom-4 duration-500">
             <div className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-3xl p-8 text-white shadow-xl mb-6">
@@ -588,26 +835,7 @@ const App = () => {
           </div>
         )}
 
-        {/* FEED TAB - (Restored previously omitted view) */}
-        {activeTab === 'feed' && (
-          <div className="space-y-4 animate-in fade-in duration-500 pb-24">
-            <div className="flex items-center justify-between px-1 mb-2">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Actividad Reciente</h3>
-            </div>
-            {feed.map(item => (
-              <div key={item.id} className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex gap-4">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-md" style={{ backgroundColor: item.aura || '#ccc' }}>
-                  {item.user?.[0]}
-                </div>
-                <div>
-                  <p className="text-sm text-slate-800 leading-tight"><span className="font-bold">{item.user}</span> {item.action}</p>
-                  <p className="text-[10px] text-slate-400 font-medium mt-1">Hace un momento</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
+        {/* PROFILE TAB */}
         {activeTab === 'profile' && (
           <div className="space-y-6 pt-10 text-center">
             <div className="w-32 h-32 mx-auto rounded-full text-5xl flex items-center justify-center text-white font-black shadow-2xl" style={{ backgroundColor: user.auraColor }}>{user.name[0]}</div>
