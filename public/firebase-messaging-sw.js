@@ -8,12 +8,12 @@ importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compa
 // your app's Firebase config object.
 // https://firebase.google.com/docs/web/setup#config-object
 firebase.initializeApp({
-    apiKey: "AIzaSyD-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", // User will need to replace this if using env vars or config
+    apiKey: "AIzaSyBU4hc4gYYiDWxeVHPJWhEnhAFTlyRMpdM",
     authDomain: "social-habit-lab.firebaseapp.com",
     projectId: "social-habit-lab",
-    storageBucket: "social-habit-lab.appspot.com",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // TODO: Replace with actual ID
-    appId: "YOUR_APP_ID" // TODO: Replace with actual ID
+    storageBucket: "social-habit-lab.firebasestorage.app",
+    messagingSenderId: "861201868189",
+    appId: "1:861201868189:web:baa13f69feee340ca53b74"
 });
 
 // Retrieve an instance of Firebase Messaging so that it can handle background
