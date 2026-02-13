@@ -36,7 +36,6 @@ export const useNotifications = () => {
             const messaging = getMessaging(app);
 
             // Request permission
-            // Request permission
             let serviceWorkerRegistration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
             if (!serviceWorkerRegistration) {
                 serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
@@ -66,20 +65,20 @@ export const useNotifications = () => {
             onMessage(messaging, (payload) => {
                 console.log('FOREGROUND MSG RECEIVED:', payload);
                 const { title, body } = payload.notification || {};
+
                 if (title) {
-                    // 1. Show In-App Toast
-                    showToast(title, body, <Bell size={16} />);
+                    // 1. Show In-App Toast (PRIORITY)
+                    try {
+                        showToast(title, body, <Bell size={16} />);
+                    } catch (e) {
+                        console.error('Toast failed:', e);
+                    }
 
-                    // 2. Play Sound
-                    import('../utils/soundEffects').then(({ playSound }) => playSound('kudos'));
-
-                    // 3. FORCE System Notification (if permission granted)
-                    if (Notification.permission === 'granted') {
-                        new Notification(title, {
-                            body,
-                            icon: '/pwa-192x192.png',
-                            silent: true // prevent double sound if playing via JS
-                        });
+                    // 2. Play Sound (Secondary)
+                    try {
+                        import('../utils/soundEffects').then(({ playSound }) => playSound('kudos'));
+                    } catch (e) {
+                        console.error('Sound failed:', e);
                     }
                 }
             });
