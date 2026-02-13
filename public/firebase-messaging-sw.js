@@ -15,21 +15,28 @@ firebase.initializeApp({
 // Retrieve an instance of Firebase Messaging
 const messaging = firebase.messaging();
 
-// Force SW to activate immediately
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', () => self.clients.claim());
+// v2.0 - Force SW to activate immediately
+console.log('[SW] Service Worker loaded v2.0');
+
+self.addEventListener('install', (event) => {
+    console.log('[SW] Installing v2.0');
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+    console.log('[SW] Activating v2.0');
+    event.waitUntil(clients.claim());
+});
 
 messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Received background message ', payload);
+    console.log('[SW] 🔔 BACKGROUND MESSAGE RECEIVED:', payload);
 
-    // Aggressive Fallback: Ensure SOMETHING is shown
     const notificationTitle = payload.notification?.title || 'Social Habit Lab Update';
     const notificationOptions = {
         body: payload.notification?.body || 'New activity in your squad!',
         icon: '/pwa-192x192.png',
         badge: '/pwa-192x192.png',
         data: payload.data,
-        // Android specific
         tag: 'social-habit-lab-notification',
         renotify: true
     };
@@ -39,20 +46,17 @@ messaging.onBackgroundMessage((payload) => {
 
 // Handle notification click
 self.addEventListener('notificationclick', function (event) {
-    console.log('[firebase-messaging-sw.js] Notification click received.');
+    console.log('[SW] Notification click received.');
     event.notification.close();
 
     event.waitUntil(
         clients.matchAll({ type: 'window' }).then(windowClients => {
-            // Check if there is already a window/tab open with the target URL
             for (var i = 0; i < windowClients.length; i++) {
                 var client = windowClients[i];
-                // If so, just focus it.
                 if (client.url.includes('social-habit-lab') && 'focus' in client) {
                     return client.focus();
                 }
             }
-            // If not, then open the target URL in a new window/tab.
             if (clients.openWindow) {
                 return clients.openWindow('/');
             }
