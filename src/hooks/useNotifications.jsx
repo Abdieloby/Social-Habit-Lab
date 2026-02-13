@@ -67,9 +67,20 @@ export const useNotifications = () => {
                 console.log('FOREGROUND MSG RECEIVED:', payload);
                 const { title, body } = payload.notification || {};
                 if (title) {
+                    // 1. Show In-App Toast
                     showToast(title, body, <Bell size={16} />);
-                    // Also try to play a sound if valid
+
+                    // 2. Play Sound
                     import('../utils/soundEffects').then(({ playSound }) => playSound('kudos'));
+
+                    // 3. FORCE System Notification (if permission granted)
+                    if (Notification.permission === 'granted') {
+                        new Notification(title, {
+                            body,
+                            icon: '/pwa-192x192.png',
+                            silent: true // prevent double sound if playing via JS
+                        });
+                    }
                 }
             });
 
