@@ -168,7 +168,50 @@ exports.onFeedItemCreate = functions.firestore.document('feed/{feedId}').onCreat
     }
 });
 
-// --- 4. Scheduled Maintenance ---
+// --- 4. Scheduled Habit Reminders ---
+// Runs every hour to check for pending habits
+exports.checkHabitReminders = functions.pubsub.schedule('every 1 hours').onRun(async (context) => {
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    try {
+        const usersSnap = await db.collection('users').get();
+
+        for (const userDoc of usersSnap.docs) {
+            const userData = userDoc.data();
+            const fcmToken = userData.fcmToken;
+
+            if (!fcmToken) continue;
+
+            const habitsSnap = await userDoc.ref.collection('habits').where('completed', '==', false).get();
+
+            if (habitsSnap.empty) continue;
+
+            // Simple logic: If user has ANY pending habits and it's 9 AM, 2 PM, or 8 PM, send a generic reminder.
+            // (More complex logic would check specific habit times)
+            if ([9, 14, 20].includes(currentHour)) {
+                await admin.messaging().send({
+                    token: fcmToken,
+                    notification: {
+                        title: 'Recordatorio de Hábitos',
+                        body: `Tienes ${habitsSnap.size} hábitos pendientes hoy. ¡A darle átomos!`
+                    },
+                    webpush: {
+                        notification: {
+                            icon: '/pwa-192x192.png',
+                            click_action: 'https://social-habit-lab.web.app/'
+                        }
+                    }
+                });
+                console.log(`Sent habit reminder to ${userDoc.id}`);
+            }
+        }
+    } catch (error) {
+        console.error("Error sending habit reminders:", error);
+    }
+});
+
+// --- 5. Scheduled Maintenance ---
 // Runs every 24 hours to clean up old feed items
 exports.cleanupFeed = functions.pubsub.schedule('every 24 hours').onRun(async (context) => {
     const limitDate = new Date();
