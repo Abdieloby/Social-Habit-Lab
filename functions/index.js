@@ -126,7 +126,9 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
 // --- 3. Notification Triggers (Kudos & Nudges) ---
 // Listens for new feed items to send push notifications
 exports.onFeedItemCreate = functions.firestore.document('feed/{feedId}').onCreate(async (snap, context) => {
+    console.log("FEED TRIGGER DETECTED:", context.params.feedId);
     const feedItem = snap.data();
+    console.log("Feed Item Data:", JSON.stringify(feedItem));
     const { type, targetId, user, action } = feedItem;
 
     // Only process kudos and nudges that have a target
@@ -171,6 +173,7 @@ exports.onFeedItemCreate = functions.firestore.document('feed/{feedId}').onCreat
 // --- 4. Scheduled Habit Reminders ---
 // Runs every hour to check for pending habits
 exports.checkHabitReminders = functions.pubsub.schedule('every 1 hours').onRun(async (context) => {
+    console.log("HABIT CRON STARTING...");
     const now = new Date();
     const currentHour = now.getHours();
 
