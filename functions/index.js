@@ -62,20 +62,11 @@ exports.addPoints = functions.https.onCall(async (data, context) => {
             try {
                 await admin.messaging().send({
                     token: fcmToken,
-                    notification: {
+                    data: {
                         title: 'Social Lab Update',
-                        body: `Recibiste ${amount} puntos: ${reason || 'Recompensa del sistema'}`
-                    },
-                    android: {
-                        notification: {
-                            icon: 'https://social-habit-lab.web.app/pwa-192x192.png',
-                            color: '#6366f1'
-                        }
-                    },
-                    webpush: {
-                        notification: {
-                            icon: '/pwa-192x192.png'
-                        }
+                        body: `Recibiste ${amount} puntos: ${reason || 'Recompensa del sistema'}`,
+                        type: 'points',
+                        timestamp: Date.now().toString()
                     }
                 });
             } catch (msgError) {
@@ -152,13 +143,11 @@ exports.onFeedItemCreate = functions.firestore.document('feed/{feedId}').onCreat
 
             await admin.messaging().send({
                 token: fcmToken,
-                notification: { title, body },
-                webpush: {
-                    notification: {
-                        icon: '/pwa-192x192.png',
-                        badge: '/pwa-192x192.png',
-                        click_action: 'https://social-habit-lab.web.app/squad'
-                    }
+                data: {
+                    title: title,
+                    body: body,
+                    type: type || 'social',
+                    timestamp: Date.now().toString()
                 }
             });
             console.log(`Notification sent to ${targetId} for ${type}`);
@@ -171,11 +160,10 @@ exports.onFeedItemCreate = functions.firestore.document('feed/{feedId}').onCreat
 });
 
 // --- 4. Scheduled Habit Reminders ---
-// Runs every hour to check for pending habits
-exports.checkHabitReminders = functions.pubsub.schedule('every 1 hours').onRun(async (context) => {
-    console.log("HABIT CRON STARTING...");
+// Runs every 15 minutes to check for habits with alarm times
+exports.checkHabitReminders = functions.pubsub.schedule('every 15 minutes').onRun(async (context) => {
+    console.log("HABIT ALARM CRON STARTING...");
     const now = new Date();
-    const currentHour = now.getHours();
 
     try {
         const usersSnap = await db.collection('users').get();
@@ -186,31 +174,57 @@ exports.checkHabitReminders = functions.pubsub.schedule('every 1 hours').onRun(a
 
             if (!fcmToken) continue;
 
-            const habitsSnap = await userDoc.ref.collection('habits').where('completed', '==', false).get();
+            // Get user's timezone offset (default: -6 for CST)
+            const tzOffset = userData.timezoneOffset ?? -6;
+            const userNow = new Date(now.getTime() + (tzOffset * 60 * 60 * 1000));
+            const userHour = userNow.getUTCHours();
+            const userMinute = userNow.getUTCMinutes();
+            const todayStr = userNow.toISOString().split('T')[0]; // YYYY-MM-DD
+
+            const habitsSnap = await userDoc.ref.collection('habits').get();
 
             if (habitsSnap.empty) continue;
 
-            // Simple logic: If user has ANY pending habits and it's 9 AM, 2 PM, or 8 PM, send a generic reminder.
-            // (More complex logic would check specific habit times)
-            if ([9, 14, 20].includes(currentHour)) {
-                await admin.messaging().send({
-                    token: fcmToken,
-                    notification: {
-                        title: 'Recordatorio de Hábitos',
-                        body: `Tienes ${habitsSnap.size} hábitos pendientes hoy. ¡A darle átomos!`
-                    },
-                    webpush: {
-                        notification: {
-                            icon: '/pwa-192x192.png',
-                            click_action: 'https://social-habit-lab.web.app/'
-                        }
+            for (const habitDoc of habitsSnap.docs) {
+                const habit = habitDoc.data();
+
+                // Skip if no alarm set
+                if (!habit.notificationTime) continue;
+
+                // Skip if already completed today
+                if (habit.history && habit.history[todayStr]) continue;
+
+                // Skip if already notified today
+                if (habit.lastNotifiedDate === todayStr) continue;
+
+                // Parse the alarm time (format: "HH:MM")
+                const [alarmHour, alarmMinute] = habit.notificationTime.split(':').map(Number);
+
+                // Check if current time matches (within 15 min window since cron runs every 15 min)
+                if (userHour === alarmHour && userMinute >= alarmMinute && userMinute < alarmMinute + 15) {
+                    try {
+                        await admin.messaging().send({
+                            token: fcmToken,
+                            data: {
+                                title: `⏰ ${habit.name}`,
+                                body: `Es hora de completar tu hábito. ¡A darle átomos!`,
+                                type: 'habit_reminder',
+                                habitId: habitDoc.id,
+                                timestamp: Date.now().toString()
+                            }
+                        });
+
+                        // Mark as notified today to prevent duplicates
+                        await habitDoc.ref.update({ lastNotifiedDate: todayStr });
+                        console.log(`Sent alarm for habit "${habit.name}" to user ${userDoc.id}`);
+                    } catch (msgError) {
+                        console.error(`Failed to send alarm for habit "${habit.name}":`, msgError);
                     }
-                });
-                console.log(`Sent habit reminder to ${userDoc.id}`);
+                }
             }
         }
     } catch (error) {
-        console.error("Error sending habit reminders:", error);
+        console.error("Error in habit alarm cron:", error);
     }
 });
 
