@@ -4,7 +4,7 @@ import { useNotifications } from '../hooks/useNotifications';
 
 const ProfilePage = () => {
     const { userData, handleSignOut } = useAuth();
-    const { permission, requestPermission } = useNotifications();
+    const { permission, requestPermission, fcmToken } = useNotifications();
 
     if (!userData) return null;
 
