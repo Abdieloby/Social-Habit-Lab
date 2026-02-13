@@ -243,3 +243,51 @@ exports.cleanupFeed = functions.pubsub.schedule('every 24 hours').onRun(async (c
         console.error("Cleanup failed:", error);
     }
 });
+
+// --- 6. Debug Helper (Temporary) ---
+exports.debugNotify = functions.https.onRequest(async (req, res) => {
+    // Enable CORS
+    res.set('Access-Control-Allow-Origin', '*');
+
+    if (req.method === 'OPTIONS') {
+        res.set('Access-Control-Allow-Methods', 'GET');
+        res.set('Access-Control-Allow-Headers', 'Content-Type');
+        res.status(204).send('');
+        return;
+    }
+
+    const uid = req.query.uid;
+    if (!uid) return res.status(400).json({ error: 'Missing uid query param' });
+
+    try {
+        const userDoc = await db.collection('users').doc(uid).get();
+        if (!userDoc.exists) return res.status(404).json({ error: 'User not found in Firestore' });
+
+        const userData = userDoc.data();
+        const fcmToken = userData.fcmToken;
+
+        if (!fcmToken) return res.status(404).json({ error: 'FCM Token missing in user doc' });
+
+        const response = await admin.messaging().send({
+            token: fcmToken,
+            notification: {
+                title: 'Debug Notification',
+                body: 'If you see this, FCM is working! 🚀'
+            },
+            webpush: {
+                notification: {
+                    icon: '/pwa-192x192.png'
+                }
+            }
+        });
+
+        res.json({ success: true, messageId: response, tokenPartial: fcmToken.substring(0, 10) + '...' });
+    } catch (error) {
+        console.error("Debug verify failed:", error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            code: error.code
+        });
+    }
+});
