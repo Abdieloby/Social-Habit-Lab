@@ -15,19 +15,26 @@ firebase.initializeApp({
 // Retrieve an instance of Firebase Messaging
 const messaging = firebase.messaging();
 
+// Force SW to activate immediately
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', () => self.clients.claim());
+
 messaging.onBackgroundMessage((payload) => {
     console.log('[firebase-messaging-sw.js] Received background message ', payload);
 
-    // Customize notification here
-    const notificationTitle = payload.notification.title || 'Social Habit Lab';
+    // Aggressive Fallback: Ensure SOMETHING is shown
+    const notificationTitle = payload.notification?.title || 'Social Habit Lab Update';
     const notificationOptions = {
-        body: payload.notification.body,
+        body: payload.notification?.body || 'New activity in your squad!',
         icon: '/pwa-192x192.png',
         badge: '/pwa-192x192.png',
-        data: payload.data // Pass data to click handler
+        data: payload.data,
+        // Android specific
+        tag: 'social-habit-lab-notification',
+        renotify: true
     };
 
-    self.registration.showNotification(notificationTitle, notificationOptions);
+    return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
 // Handle notification click

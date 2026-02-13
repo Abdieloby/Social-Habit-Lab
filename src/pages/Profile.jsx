@@ -118,6 +118,22 @@ const ProfilePage = () => {
                     >
                         🔄 Test Backend Loopback
                     </button>
+                    <button
+                        onClick={() => {
+                            if ('serviceWorker' in navigator) {
+                                navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                                    for (let registration of registrations) {
+                                        registration.unregister();
+                                    }
+                                    alert('Service Worker unregistered. Reloading...');
+                                    window.location.reload();
+                                });
+                            }
+                        }}
+                        className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-700 transition-all col-span-2"
+                    >
+                        ⚡ Force Update SW
+                    </button>
                 </div>
 
                 <div className="text-[10px] font-mono text-slate-400 break-all bg-white p-2 rounded-lg">
