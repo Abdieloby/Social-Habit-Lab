@@ -62,10 +62,15 @@ export const useNotifications = () => {
             }
 
             // Listen for foreground messages
+            // Unsubscribe logic would be ideal here if this hook unmounts, but for now we keep it simple
             onMessage(messaging, (payload) => {
-                console.log('Message received. ', payload);
-                const { title, body } = payload.notification;
-                showToast(title, body, <Bell size={16} />);
+                console.log('FOREGROUND MSG RECEIVED:', payload);
+                const { title, body } = payload.notification || {};
+                if (title) {
+                    showToast(title, body, <Bell size={16} />);
+                    // Also try to play a sound if valid
+                    import('../utils/soundEffects').then(({ playSound }) => playSound('kudos'));
+                }
             });
 
         } catch (err) {

@@ -1,12 +1,8 @@
 // Give the service worker access to Firebase Messaging.
-// Note that you can only use Firebase Messaging here. Other Firebase libraries
-// are not available in the service worker.
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
-// Initialize the Firebase app in the service worker by passing in
-// your app's Firebase config object.
-// https://firebase.google.com/docs/web/setup#config-object
+// Initialize the Firebase app in the service worker
 firebase.initializeApp({
     apiKey: "AIzaSyBU4hc4gYYiDWxeVHPJWhEnhAFTlyRMpdM",
     authDomain: "social-habit-lab.firebaseapp.com",
@@ -16,18 +12,43 @@ firebase.initializeApp({
     appId: "1:861201868189:web:baa13f69feee340ca53b74"
 });
 
-// Retrieve an instance of Firebase Messaging so that it can handle background
-// messages.
+// Retrieve an instance of Firebase Messaging
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
     console.log('[firebase-messaging-sw.js] Received background message ', payload);
-    // Customize notification here if needed
-    const notificationTitle = payload.notification.title;
+
+    // Customize notification here
+    const notificationTitle = payload.notification.title || 'Social Habit Lab';
     const notificationOptions = {
         body: payload.notification.body,
-        icon: '/pwa-192x192.png'
+        icon: '/pwa-192x192.png',
+        badge: '/pwa-192x192.png',
+        data: payload.data // Pass data to click handler
     };
 
     self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Handle notification click
+self.addEventListener('notificationclick', function (event) {
+    console.log('[firebase-messaging-sw.js] Notification click received.');
+    event.notification.close();
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window' }).then(windowClients => {
+            // Check if there is already a window/tab open with the target URL
+            for (var i = 0; i < windowClients.length; i++) {
+                var client = windowClients[i];
+                // If so, just focus it.
+                if (client.url.includes('social-habit-lab') && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            // If not, then open the target URL in a new window/tab.
+            if (clients.openWindow) {
+                return clients.openWindow('/');
+            }
+        })
+    );
 });
