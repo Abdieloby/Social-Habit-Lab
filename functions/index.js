@@ -123,7 +123,52 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
     }
 });
 
-// --- 3. Scheduled Maintenance ---
+// --- 3. Notification Triggers (Kudos & Nudges) ---
+// Listens for new feed items to send push notifications
+exports.onFeedItemCreate = functions.firestore.document('feed/{feedId}').onCreate(async (snap, context) => {
+    const feedItem = snap.data();
+    const { type, targetId, user, action } = feedItem;
+
+    // Only process kudos and nudges that have a target
+    if (!['kudos', 'nudge'].includes(type) || !targetId) return null;
+
+    try {
+        const targetRef = db.collection('users').doc(targetId);
+        const targetDoc = await targetRef.get();
+
+        if (!targetDoc.exists) {
+            console.log(`Target user ${targetId} not found.`);
+            return null;
+        }
+
+        const { fcmToken } = targetDoc.data();
+
+        if (fcmToken) {
+            const title = type === 'kudos' ? '¡Recibiste Kudos!' : '¡Alguien te anima!';
+            const body = `${user} ${action}`;
+            const icon = type === 'kudos' ? '/icons/kudos.png' : '/icons/nudge.png'; // Assume exist or fallback
+
+            await admin.messaging().send({
+                token: fcmToken,
+                notification: { title, body },
+                webpush: {
+                    notification: {
+                        icon: '/pwa-192x192.png',
+                        badge: '/pwa-192x192.png',
+                        click_action: 'https://social-habit-lab.web.app/squad'
+                    }
+                }
+            });
+            console.log(`Notification sent to ${targetId} for ${type}`);
+        } else {
+            console.log(`No FCM token for user ${targetId}`);
+        }
+    } catch (error) {
+        console.error("Error sending notification:", error);
+    }
+});
+
+// --- 4. Scheduled Maintenance ---
 // Runs every 24 hours to clean up old feed items
 exports.cleanupFeed = functions.pubsub.schedule('every 24 hours').onRun(async (context) => {
     const limitDate = new Date();
