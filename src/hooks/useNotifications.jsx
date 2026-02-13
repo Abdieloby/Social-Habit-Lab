@@ -17,13 +17,11 @@ export const useNotifications = () => {
     // Effect 1: Initialize messaging when permission is granted
     useEffect(() => {
         if (Notification.permission === 'granted') {
-            registerServiceWorker();
             initializeMessaging();
         }
     }, []);
 
-    // Effect 2: CRITICAL FIX — Save token to Firestore whenever BOTH are ready
-    // This solves the race condition where token arrives before auth resolves
+    // Effect 2: Save token to Firestore whenever BOTH are ready
     useEffect(() => {
         if (userData?.uid && fcmToken) {
             console.log('[Notifications] Saving FCM token to Firestore for user:', userData.uid);
@@ -37,40 +35,34 @@ export const useNotifications = () => {
         }
     }, [userData, fcmToken]);
 
-    const registerServiceWorker = async () => {
-        if ('serviceWorker' in navigator) {
-            try {
-                const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-                console.log('Service Worker registered with scope:', registration.scope);
-            } catch (err) {
-                console.error('Service Worker registration failed:', err);
-            }
-        }
-    };
-
     const initializeMessaging = async () => {
         try {
             const messaging = getMessaging(app);
 
-            let serviceWorkerRegistration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
-            if (!serviceWorkerRegistration) {
-                serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-            }
+            // Step 1: Register the SW
+            console.log('[Notifications] Registering Service Worker...');
+            await navigator.serviceWorker.register('/firebase-messaging-sw.js');
 
+            // Step 2: WAIT for the SW to be fully activated
+            // This is critical — getToken() fails if SW isn't active yet
+            console.log('[Notifications] Waiting for Service Worker to activate...');
+            const serviceWorkerRegistration = await navigator.serviceWorker.ready;
+            console.log('[Notifications] ✅ Service Worker is READY:', serviceWorkerRegistration.scope);
+
+            // Step 3: NOW get the token (SW is guaranteed active)
             const currentToken = await getToken(messaging, {
                 vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
                 serviceWorkerRegistration
             });
 
             if (currentToken) {
-                console.log('FCM Token:', currentToken);
+                console.log('[Notifications] FCM Token:', currentToken);
                 setFcmToken(currentToken);
-                // Token saving now happens in Effect 2 above (no longer here)
             } else {
-                console.log('No registration token available. Request permission to generate one.');
+                console.log('[Notifications] No registration token available.');
             }
 
-            // Set up foreground message listener (only once)
+            // Step 4: Set up foreground message listener (only once)
             if (!messageListenerSet.current) {
                 messageListenerSet.current = true;
                 onMessage(messaging, (payload) => {
@@ -78,14 +70,12 @@ export const useNotifications = () => {
                     const { title, body } = payload.notification || {};
 
                     if (title) {
-                        // 1. Show In-App Toast (PRIORITY)
                         try {
                             showToast(title, body, <Bell size={16} />);
                         } catch (e) {
                             console.error('Toast failed:', e);
                         }
 
-                        // 2. Try system notification too (belt and suspenders)
                         try {
                             if (Notification.permission === 'granted') {
                                 new Notification(title, {
@@ -97,7 +87,6 @@ export const useNotifications = () => {
                             console.warn('System notification failed:', e);
                         }
 
-                        // 3. Play Sound
                         try {
                             import('../utils/soundEffects').then(({ playSound }) => playSound('kudos'));
                         } catch (e) {
@@ -108,7 +97,7 @@ export const useNotifications = () => {
             }
 
         } catch (err) {
-            console.log('An error occurred while retrieving token. ', err);
+            console.error('[Notifications] Error during init:', err);
         }
     };
 
