@@ -25,7 +25,7 @@ export const useNotifications = () => {
 
             // Request permission
             const currentToken = await getToken(messaging, {
-                vapidKey: 'YOUR_VAPID_KEY_HERE' // TODO: Replace with env variable or config
+                vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
             });
 
             if (currentToken) {
