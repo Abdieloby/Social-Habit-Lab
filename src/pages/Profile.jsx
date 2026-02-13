@@ -1,6 +1,8 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
+import { db } from '../firebase';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 const ProfilePage = () => {
     const { userData, handleSignOut } = useAuth();
@@ -89,6 +91,32 @@ const ProfilePage = () => {
                         className="bg-white px-4 py-2 rounded-xl text-xs font-bold text-slate-600 shadow-sm active:scale-95 transition-transform"
                     >
                         🔔 Test Notify
+                    </button>
+
+                    <button
+                        onClick={async () => {
+                            if (!userData || !fcmToken) {
+                                alert('Missing user or token');
+                                return;
+                            }
+                            try {
+                                await addDoc(collection(db, 'feed'), {
+                                    userId: 'SYSTEM',
+                                    user: 'Debug-Bot',
+                                    aura: '#333333',
+                                    action: 'te está probando (Loopback)',
+                                    type: 'nudge',
+                                    timestamp: serverTimestamp(),
+                                    targetId: userData.uid // Target SELF
+                                });
+                                alert('Loopback sent! Wait 5-10s...');
+                            } catch (e) {
+                                alert('Error: ' + e.message);
+                            }
+                        }}
+                        className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-100 transition-all col-span-2"
+                    >
+                        🔄 Test Backend Loopback
                     </button>
                 </div>
 
