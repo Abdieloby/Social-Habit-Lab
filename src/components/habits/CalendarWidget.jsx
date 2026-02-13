@@ -139,29 +139,49 @@ const CalendarWidget = ({ habits }) => {
                     <span className="text-[9px] font-black uppercase text-slate-300 tracking-widest">Actividad 35 días</span>
                 </div>
                 <div className="grid grid-cols-7 gap-2">
-                    {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <div key={i} className="text-center text-[9px] font-black text-slate-300 mb-1">{d}</div>)}
-                    {daysIdx.map(i => {
-                        const d = new Date();
-                        d.setDate(today.getDate() - i);
-                        const dStr = d.toISOString().split('T')[0];
-                        const st = targetHistory[dStr];
-                        const isToday = i === 0;
+                    {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((d, i) => <div key={i} className="text-center text-[9px] font-black text-slate-300 mb-1">{d}</div>)}
+                    {(() => {
+                        // Calculate the grid: 5 rows × 7 cols = 35 cells
+                        // End on today, start 34 days ago, aligned to weekday columns
+                        const cells = [];
+                        const endDate = new Date();
+                        const startDate = new Date();
+                        startDate.setDate(endDate.getDate() - 34);
 
-                        let bg = 'bg-slate-50';
-                        let text = 'text-slate-300';
+                        // getDay() returns 0=Sun, we need 0=Mon
+                        const startDayOfWeek = (startDate.getDay() + 6) % 7; // 0=Mon, 6=Sun
 
-                        if (st === 'green') { bg = 'bg-emerald-400 shadow-md shadow-emerald-200'; text = 'text-white/90'; }
-                        else if (st === 'yellow') { bg = 'bg-amber-400 shadow-md shadow-amber-200'; text = 'text-white/90'; }
-                        else if (st === 'red') { bg = 'bg-rose-400'; text = 'text-white/90'; }
+                        // Add empty cells for days before startDate to align the grid
+                        for (let pad = 0; pad < startDayOfWeek; pad++) {
+                            cells.push(<div key={`pad-${pad}`} className="w-8 h-8" />);
+                        }
 
-                        return (
-                            <div key={i} className="flex flex-col items-center gap-1 group relative">
-                                <div className={`w-8 h-8 rounded-full ${bg} transition-all duration-300 flex items-center justify-center text-[9px] font-bold ${text} ${isToday ? 'ring-2 ring-indigo-500 ring-offset-2 scale-110' : 'group-hover:scale-110'}`}>
-                                    {d.getDate()}
+                        // Add actual date cells
+                        for (let i = 0; i <= 34; i++) {
+                            const d = new Date(startDate);
+                            d.setDate(startDate.getDate() + i);
+                            const dStr = d.toISOString().split('T')[0];
+                            const st = targetHistory[dStr];
+                            const isToday = d.toDateString() === endDate.toDateString();
+
+                            let bg = 'bg-slate-50';
+                            let text = 'text-slate-300';
+
+                            if (st === 'green') { bg = 'bg-emerald-400 shadow-md shadow-emerald-200'; text = 'text-white/90'; }
+                            else if (st === 'yellow') { bg = 'bg-amber-400 shadow-md shadow-amber-200'; text = 'text-white/90'; }
+                            else if (st === 'red') { bg = 'bg-rose-400'; text = 'text-white/90'; }
+
+                            cells.push(
+                                <div key={dStr} className="flex flex-col items-center gap-1 group relative">
+                                    <div className={`w-8 h-8 rounded-full ${bg} transition-all duration-300 flex items-center justify-center text-[9px] font-bold ${text} ${isToday ? 'ring-2 ring-indigo-500 ring-offset-2 scale-110' : 'group-hover:scale-110'}`}>
+                                        {d.getDate()}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        }
+
+                        return cells;
+                    })()}
                 </div>
             </div>
         </div>

@@ -1,14 +1,52 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
+import { useHabits } from '../hooks/useHabits';
 import { db } from '../firebase';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { checkAchievements } from '../utils/achievements';
 
 const ProfilePage = () => {
     const { userData, handleSignOut } = useAuth();
     const { permission, requestPermission, fcmToken } = useNotifications();
+    const { habits } = useHabits();
 
     if (!userData) return null;
+
+    // Compute stats for achievements
+    const computeStats = () => {
+        let bestStreak = 0;
+        let bestPerfectStreak = 0;
+        habits.forEach(h => {
+            if (!h.history) return;
+            const dates = Object.keys(h.history).sort();
+            let tempStreak = 0, tempPerfect = 0;
+            let maxStreak = 0, maxPerfect = 0;
+            const start = dates.length > 0 ? new Date(dates[0]) : new Date();
+            const end = new Date();
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const dStr = d.toISOString().split('T')[0];
+                const status = h.history[dStr];
+                if (status === 'green' || status === 'yellow') { tempStreak++; } else { if (tempStreak > maxStreak) maxStreak = tempStreak; tempStreak = 0; }
+                if (status === 'green') { tempPerfect++; } else { if (tempPerfect > maxPerfect) maxPerfect = tempPerfect; tempPerfect = 0; }
+            }
+            if (tempStreak > maxStreak) maxStreak = tempStreak;
+            if (tempPerfect > maxPerfect) maxPerfect = tempPerfect;
+            if (maxStreak > bestStreak) bestStreak = maxStreak;
+            if (maxPerfect > bestPerfectStreak) bestPerfectStreak = maxPerfect;
+        });
+        return {
+            totalHabits: habits.length,
+            bestStreak,
+            bestPerfectStreak,
+            totalPoints: userData.points || 0,
+            kudosSent: userData.kudosSent || 0,
+            storeRedemptions: userData.storeRedemptions || 0,
+        };
+    };
+
+    const stats = computeStats();
+    const { unlocked, locked } = checkAchievements(stats);
 
     return (
         <div className="space-y-6 pt-10 text-center pb-24">
@@ -67,80 +105,103 @@ const ProfilePage = () => {
                     </div>
                 </div>
             </div>
-            {/* Debug Zone */}
-            <div className="bg-slate-900/5 p-4 rounded-3xl space-y-3 mt-8">
-                <h3 className="font-black text-slate-400 text-[10px] uppercase tracking-widest">Debug Zone (v2.1)</h3>
 
-                <div className="grid grid-cols-2 gap-2">
-                    <button
-                        onClick={() => {
-                            import('../utils/soundEffects').then(({ playSound }) => playSound('kudos'));
-                        }}
-                        className="bg-white px-4 py-2 rounded-xl text-xs font-bold text-slate-600 shadow-sm active:scale-95 transition-transform"
-                    >
-                        🔊 Test Sound
-                    </button>
-                    <button
-                        onClick={() => {
-                            if (Notification.permission === 'granted') {
-                                new Notification('Test Notification', { body: 'This is a local test.', icon: '/pwa-192x192.png' });
-                            } else {
-                                alert('Permission not granted: ' + Notification.permission);
-                            }
-                        }}
-                        className="bg-white px-4 py-2 rounded-xl text-xs font-bold text-slate-600 shadow-sm active:scale-95 transition-transform"
-                    >
-                        🔔 Test Notify
-                    </button>
-
-                    <button
-                        onClick={async () => {
-                            if (!userData || !fcmToken) {
-                                alert('Missing user or token');
-                                return;
-                            }
-                            try {
-                                await addDoc(collection(db, 'feed'), {
-                                    userId: 'SYSTEM',
-                                    user: 'Debug-Bot',
-                                    aura: '#333333',
-                                    action: 'te está probando (Loopback)',
-                                    type: 'nudge',
-                                    timestamp: serverTimestamp(),
-                                    targetId: userData.uid // Target SELF
-                                });
-                                alert('Loopback sent! Wait 5-10s...');
-                            } catch (e) {
-                                alert('Error: ' + e.message);
-                            }
-                        }}
-                        className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-100 transition-all col-span-2"
-                    >
-                        🔄 Test Backend Loopback
-                    </button>
-                    <button
-                        onClick={() => {
-                            if ('serviceWorker' in navigator) {
-                                navigator.serviceWorker.getRegistrations().then(function (registrations) {
-                                    for (let registration of registrations) {
-                                        registration.unregister();
-                                    }
-                                    alert('Service Worker unregistered. Reloading...');
-                                    window.location.reload();
-                                });
-                            }
-                        }}
-                        className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-700 transition-all col-span-2"
-                    >
-                        ⚡ Force Update SW
-                    </button>
-                </div>
-
-                <div className="text-[10px] font-mono text-slate-400 break-all bg-white p-2 rounded-lg">
-                    Token: {fcmToken ? 'Active ✅' : 'Missing ❌'} <br />
-                    ID: {userData?.uid || 'Loading...'}
+            {/* Achievements Section */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-50 text-left">
+                <h3 className="font-black text-slate-800 text-sm uppercase tracking-wide mb-4">
+                    🏅 Logros — {unlocked.length}/{unlocked.length + locked.length}
+                </h3>
+                <div className="grid grid-cols-3 gap-3">
+                    {unlocked.map(a => (
+                        <div key={a.id} className="bg-gradient-to-br from-indigo-50 to-purple-50 p-3 rounded-2xl text-center group hover:scale-105 transition-all shadow-sm border border-indigo-100">
+                            <div className="text-2xl mb-1 group-hover:scale-125 transition-transform">{a.icon}</div>
+                            <div className="text-[9px] font-black text-indigo-700 uppercase tracking-wider leading-tight">{a.name}</div>
+                        </div>
+                    ))}
+                    {locked.map(a => (
+                        <div key={a.id} className="bg-slate-50 p-3 rounded-2xl text-center opacity-40">
+                            <div className="text-2xl mb-1 grayscale">🔒</div>
+                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-tight">{a.name}</div>
+                        </div>
+                    ))}
                 </div>
             </div>
+            {/* Debug Zone — only visible to admins */}
+            {userData?.role === 'admin' && (
+                <div className="bg-slate-900/5 p-4 rounded-3xl space-y-3 mt-8">
+                    <h3 className="font-black text-slate-400 text-[10px] uppercase tracking-widest">Debug Zone (v2.1)</h3>
+
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            onClick={() => {
+                                import('../utils/soundEffects').then(({ playSound }) => playSound('kudos'));
+                            }}
+                            className="bg-white px-4 py-2 rounded-xl text-xs font-bold text-slate-600 shadow-sm active:scale-95 transition-transform"
+                        >
+                            🔊 Test Sound
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (Notification.permission === 'granted') {
+                                    new Notification('Test Notification', { body: 'This is a local test.', icon: '/pwa-192x192.png' });
+                                } else {
+                                    alert('Permission not granted: ' + Notification.permission);
+                                }
+                            }}
+                            className="bg-white px-4 py-2 rounded-xl text-xs font-bold text-slate-600 shadow-sm active:scale-95 transition-transform"
+                        >
+                            🔔 Test Notify
+                        </button>
+
+                        <button
+                            onClick={async () => {
+                                if (!userData || !fcmToken) {
+                                    alert('Missing user or token');
+                                    return;
+                                }
+                                try {
+                                    await addDoc(collection(db, 'feed'), {
+                                        userId: 'SYSTEM',
+                                        user: 'Debug-Bot',
+                                        aura: '#333333',
+                                        action: 'te está probando (Loopback)',
+                                        type: 'nudge',
+                                        timestamp: serverTimestamp(),
+                                        targetId: userData.uid // Target SELF
+                                    });
+                                    alert('Loopback sent! Wait 5-10s...');
+                                } catch (e) {
+                                    alert('Error: ' + e.message);
+                                }
+                            }}
+                            className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-100 transition-all col-span-2"
+                        >
+                            🔄 Test Backend Loopback
+                        </button>
+                        <button
+                            onClick={() => {
+                                if ('serviceWorker' in navigator) {
+                                    navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                                        for (let registration of registrations) {
+                                            registration.unregister();
+                                        }
+                                        alert('Service Worker unregistered. Reloading...');
+                                        window.location.reload();
+                                    });
+                                }
+                            }}
+                            className="bg-slate-800 text-slate-400 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-700 transition-all col-span-2"
+                        >
+                            ⚡ Force Update SW
+                        </button>
+                    </div>
+
+                    <div className="text-[10px] font-mono text-slate-400 break-all bg-white p-2 rounded-lg">
+                        Token: {fcmToken ? 'Active ✅' : 'Missing ❌'} <br />
+                        ID: {userData?.uid || 'Loading...'}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

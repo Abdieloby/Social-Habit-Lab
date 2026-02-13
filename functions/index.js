@@ -245,18 +245,100 @@ exports.cleanupFeed = functions.pubsub.schedule('every 24 hours').onRun(async (c
         }
 
         // Batch delete (max 500 per batch)
-        // const batch = db.batch();
-        // snapshot.docs.forEach(doc => {
-        //     batch.delete(doc.ref);
-        // });
-        // await batch.commit();
-
-        // DRY RUN SAFE MODE:
-        console.log(`[DRY RUN] Would have deleted ${snapshot.size} old feed items. No changes made.`);
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+        console.log(`Deleted ${snapshot.size} old feed items.`);
     } catch (error) {
         console.error("Cleanup failed:", error);
     }
 });
+
+// --- 7. Weekly Digest Notification ---
+// Runs every Sunday at 10:00 AM CST (16:00 UTC)
+exports.weeklyDigest = functions.pubsub.schedule('every sunday 16:00')
+    .timeZone('America/Chicago')
+    .onRun(async (context) => {
+        console.log('Running weekly digest...');
+
+        try {
+            const usersSnap = await db.collection('users').get();
+            const now = new Date();
+            const weekAgo = new Date();
+            weekAgo.setDate(now.getDate() - 7);
+
+            let sent = 0;
+            let skipped = 0;
+
+            for (const userDoc of usersSnap.docs) {
+                const userData = userDoc.data();
+                const fcmToken = userData.fcmToken;
+
+                if (!fcmToken) {
+                    skipped++;
+                    continue;
+                }
+
+                // Get user's habits
+                const habitsSnap = await db.collection('users').doc(userDoc.id).collection('habits').get();
+
+                if (habitsSnap.empty) {
+                    skipped++;
+                    continue;
+                }
+
+                // Calculate completion for last 7 days
+                let totalSlots = 0;
+                let completedSlots = 0;
+
+                habitsSnap.docs.forEach(habitDoc => {
+                    const habit = habitDoc.data();
+                    if (!habit.history) return;
+
+                    for (let d = new Date(weekAgo); d <= now; d.setDate(d.getDate() + 1)) {
+                        const dStr = d.toISOString().split('T')[0];
+                        totalSlots++;
+                        const status = habit.history[dStr];
+                        if (status === 'green' || status === 'yellow') {
+                            completedSlots++;
+                        }
+                    }
+                });
+
+                const completionRate = totalSlots > 0 ? Math.round((completedSlots / totalSlots) * 100) : 0;
+                const firstName = (userData.name || 'Agente').split(' ')[0];
+
+                // Choose emoji based on completion rate
+                let emoji = '📊';
+                if (completionRate >= 90) emoji = '🏆';
+                else if (completionRate >= 70) emoji = '🔥';
+                else if (completionRate >= 50) emoji = '💪';
+                else emoji = '📈';
+
+                try {
+                    await admin.messaging().send({
+                        token: fcmToken,
+                        data: {
+                            title: `${emoji} Resumen Semanal`,
+                            body: `${firstName}, completaste el ${completionRate}% de tus hábitos esta semana. Racha: ${userData.streak || 0} días.`,
+                            type: 'weekly_digest',
+                            completionRate: completionRate.toString(),
+                            timestamp: Date.now().toString()
+                        }
+                    });
+                    sent++;
+                } catch (msgErr) {
+                    console.error(`Failed to send digest to ${userDoc.id}:`, msgErr.message);
+                }
+            }
+
+            console.log(`Weekly digest complete. Sent: ${sent}, Skipped: ${skipped}`);
+        } catch (error) {
+            console.error("Weekly digest failed:", error);
+        }
+    });
 
 // --- 6. Debug Helper (Temporary) ---
 exports.debugNotify = functions.https.onRequest(async (req, res) => {

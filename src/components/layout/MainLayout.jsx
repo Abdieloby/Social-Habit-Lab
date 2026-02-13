@@ -3,12 +3,20 @@ import { Outlet } from 'react-router-dom';
 import Navbar from './Navbar';
 import { useAuth } from '../../context/AuthContext';
 
+const getLevel = (points) => {
+    if (points >= 1000) return { num: 4, label: 'Leyenda' };
+    if (points >= 500) return { num: 3, label: 'Élite' };
+    if (points >= 100) return { num: 2, label: 'Agente' };
+    return { num: 1, label: 'Recluta' };
+};
+
 const MainLayout = () => {
     const { userData } = useAuth();
+    const level = getLevel(userData?.points || 0);
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
-            {/* Header (Inspired by App.jsx) */}
+            {/* Header */}
             <header className="px-6 pt-12 pb-6 flex justify-between items-center max-w-lg mx-auto">
                 <div className="animate-in slide-in-from-left-4 duration-500">
                     <h2 className="text-3xl font-black italic text-slate-900 tracking-tighter uppercase">
@@ -26,7 +34,7 @@ const MainLayout = () => {
                     >
                         {userData?.name?.[0] || '?'}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 bg-slate-900 text-[10px] text-white font-bold px-1.5 py-0.5 rounded-full border-2 border-white">NV.1</div>
+                    <div className="absolute -bottom-1 -right-1 bg-slate-900 text-[10px] text-white font-bold px-1.5 py-0.5 rounded-full border-2 border-white">NV.{level.num}</div>
                 </div>
             </header>
 

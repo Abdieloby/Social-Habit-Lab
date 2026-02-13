@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { Store, Trash2, Edit } from 'lucide-react';
 import React from 'react';
+import { haptic } from '../utils/haptics';
 
 export const useStoreActions = () => {
     const { userData } = useAuth();
@@ -13,6 +14,7 @@ export const useStoreActions = () => {
         if (!userData || userData.points < item.cost) return;
         try {
             await updateDoc(doc(db, 'users', userData.uid), { points: increment(-item.cost) });
+            haptic('success');
             showToast(`Canjeado: ${item.name}`, '¡Disfrútalo!', <Store size={16} />);
             await addDoc(collection(db, 'feed'), {
                 userId: userData.uid,
@@ -39,6 +41,7 @@ export const useStoreActions = () => {
                 createdAt: serverTimestamp()
             };
             await addDoc(collection(db, 'store'), newItem);
+            haptic('medium');
             showToast("Recompensa Creada", "Disponible en la tienda.", <Store size={16} />);
             return true;
         } catch (err) {

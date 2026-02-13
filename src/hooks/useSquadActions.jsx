@@ -5,6 +5,7 @@ import { useUI } from '../context/UIContext';
 import { Heart, Bell } from 'lucide-react';
 import React from 'react';
 import { playSound } from '../utils/soundEffects';
+import { haptic } from '../utils/haptics';
 
 export const useSquadActions = () => {
     const { userData } = useAuth();
@@ -14,6 +15,7 @@ export const useSquadActions = () => {
         if (!userData || userData.points < 5) return;
         try {
             playSound('kudos');
+            haptic('success');
             // ... (rest of logic)
             await updateDoc(doc(db, 'users', userData.uid), { points: increment(-5) });
             await updateDoc(doc(db, 'users', target.id), { points: increment(5) });
@@ -28,6 +30,7 @@ export const useSquadActions = () => {
 
     const handleNudge = async (target) => {
         playSound('nudge');
+        haptic('medium');
         // trigger backend notification via feed item
         await addDoc(collection(db, 'feed'), {
             userId: userData.uid, user: userData.name, aura: userData.colors?.aura || '#6366f1',
