@@ -15,17 +15,36 @@ export const useNotifications = () => {
 
     useEffect(() => {
         if (Notification.permission === 'granted') {
+            registerServiceWorker();
             initializeMessaging();
         }
     }, []);
+
+    const registerServiceWorker = async () => {
+        if ('serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+                console.log('Service Worker registered with scope:', registration.scope);
+            } catch (err) {
+                console.error('Service Worker registration failed:', err);
+            }
+        }
+    };
 
     const initializeMessaging = async () => {
         try {
             const messaging = getMessaging(app);
 
             // Request permission
+            // Request permission
+            let serviceWorkerRegistration = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
+            if (!serviceWorkerRegistration) {
+                serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+            }
+
             const currentToken = await getToken(messaging, {
-                vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
+                vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+                serviceWorkerRegistration
             });
 
             if (currentToken) {
