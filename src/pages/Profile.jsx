@@ -65,6 +65,38 @@ const ProfilePage = () => {
                     </div>
                 </div>
             </div>
+            {/* Debug Zone */}
+            <div className="bg-slate-900/5 p-4 rounded-3xl space-y-3 mt-8">
+                <h3 className="font-black text-slate-400 text-[10px] uppercase tracking-widest">Debug Zone (v2.1)</h3>
+
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        onClick={() => {
+                            import('../utils/soundEffects').then(({ playSound }) => playSound('kudos'));
+                        }}
+                        className="bg-white px-4 py-2 rounded-xl text-xs font-bold text-slate-600 shadow-sm active:scale-95 transition-transform"
+                    >
+                        🔊 Test Sound
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (Notification.permission === 'granted') {
+                                new Notification('Test Notification', { body: 'This is a local test.', icon: '/pwa-192x192.png' });
+                            } else {
+                                alert('Permission not granted: ' + Notification.permission);
+                            }
+                        }}
+                        className="bg-white px-4 py-2 rounded-xl text-xs font-bold text-slate-600 shadow-sm active:scale-95 transition-transform"
+                    >
+                        🔔 Test Notify
+                    </button>
+                </div>
+
+                <div className="text-[10px] font-mono text-slate-400 break-all bg-white p-2 rounded-lg">
+                    Token: {fcmToken ? 'Active ✅' : 'Missing ❌'} <br />
+                    ID: {userData?.uid || 'Loading...'}
+                </div>
+            </div>
         </div>
     );
 };
