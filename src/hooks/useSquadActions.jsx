@@ -1,3 +1,9 @@
+import { db } from '../firebase';
+import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
+import { useUI } from '../context/UIContext';
+import { Heart, Bell } from 'lucide-react';
+import React from 'react';
 import { playSound } from '../utils/soundEffects';
 
 export const useSquadActions = () => {
