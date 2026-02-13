@@ -160,8 +160,8 @@ exports.onFeedItemCreate = functions.firestore.document('feed/{feedId}').onCreat
 });
 
 // --- 4. Scheduled Habit Reminders ---
-// Runs every 15 minutes to check for habits with alarm times
-exports.checkHabitReminders = functions.pubsub.schedule('every 15 minutes').onRun(async (context) => {
+// Runs every minute to check for habits with alarm times
+exports.checkHabitReminders = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
     console.log("HABIT ALARM CRON STARTING...");
     const now = new Date();
 
@@ -201,7 +201,7 @@ exports.checkHabitReminders = functions.pubsub.schedule('every 15 minutes').onRu
                 const [alarmHour, alarmMinute] = habit.notificationTime.split(':').map(Number);
 
                 // Check if current time matches (within 15 min window since cron runs every 15 min)
-                if (userHour === alarmHour && userMinute >= alarmMinute && userMinute < alarmMinute + 15) {
+                if (userHour === alarmHour && userMinute === alarmMinute) {
                     try {
                         await admin.messaging().send({
                             token: fcmToken,
