@@ -43,13 +43,12 @@ export const useNotifications = () => {
             console.log('[Notifications] Registering Service Worker...');
             await navigator.serviceWorker.register('/firebase-messaging-sw.js');
 
-            // Step 2: WAIT for the SW to be fully activated
-            // This is critical — getToken() fails if SW isn't active yet
+            // Step 2: Wait for SW to be fully activated
             console.log('[Notifications] Waiting for Service Worker to activate...');
             const serviceWorkerRegistration = await navigator.serviceWorker.ready;
             console.log('[Notifications] ✅ Service Worker is READY:', serviceWorkerRegistration.scope);
 
-            // Step 3: NOW get the token (SW is guaranteed active)
+            // Step 3: Get the token (SW is guaranteed active)
             const currentToken = await getToken(messaging, {
                 vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
                 serviceWorkerRegistration
@@ -65,13 +64,19 @@ export const useNotifications = () => {
             // Step 4: Set up foreground message listener (only once)
             if (!messageListenerSet.current) {
                 messageListenerSet.current = true;
+                console.log('[Notifications] 🎧 Foreground message listener REGISTERED');
+
                 onMessage(messaging, (payload) => {
-                    console.log('🔔 FOREGROUND MSG RECEIVED:', payload);
-                    const { title, body } = payload.notification || {};
+                    console.log('🔔 FOREGROUND MSG RECEIVED:', JSON.stringify(payload));
+
+                    // Handle both notification messages AND data-only messages
+                    const title = payload.notification?.title || payload.data?.title || 'Notification';
+                    const body = payload.notification?.body || payload.data?.body || '';
 
                     if (title) {
                         try {
                             showToast(title, body, <Bell size={16} />);
+                            console.log('🔔 Toast shown');
                         } catch (e) {
                             console.error('Toast failed:', e);
                         }
@@ -82,6 +87,7 @@ export const useNotifications = () => {
                                     body: body,
                                     icon: '/pwa-192x192.png'
                                 });
+                                console.log('🔔 System notification shown');
                             }
                         } catch (e) {
                             console.warn('System notification failed:', e);

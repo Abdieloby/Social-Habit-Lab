@@ -15,25 +15,28 @@ firebase.initializeApp({
 // Retrieve an instance of Firebase Messaging
 const messaging = firebase.messaging();
 
-// v2.0 - Force SW to activate immediately
-console.log('[SW] Service Worker loaded v2.0');
+// v2.1 - Force SW to activate immediately
+console.log('[SW] Service Worker loaded v2.1');
 
 self.addEventListener('install', (event) => {
-    console.log('[SW] Installing v2.0');
+    console.log('[SW] Installing v2.1');
     self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-    console.log('[SW] Activating v2.0');
+    console.log('[SW] Activating v2.1');
     event.waitUntil(clients.claim());
 });
 
+// Handle background messages (both notification and data-only)
 messaging.onBackgroundMessage((payload) => {
-    console.log('[SW] 🔔 BACKGROUND MESSAGE RECEIVED:', payload);
+    console.log('[SW] 🔔 BACKGROUND MESSAGE RECEIVED:', JSON.stringify(payload));
 
-    const notificationTitle = payload.notification?.title || 'Social Habit Lab Update';
+    const title = payload.notification?.title || payload.data?.title || 'Social Habit Lab Update';
+    const body = payload.notification?.body || payload.data?.body || 'New activity in your squad!';
+
     const notificationOptions = {
-        body: payload.notification?.body || 'New activity in your squad!',
+        body: body,
         icon: '/pwa-192x192.png',
         badge: '/pwa-192x192.png',
         data: payload.data,
@@ -41,7 +44,15 @@ messaging.onBackgroundMessage((payload) => {
         renotify: true
     };
 
-    return self.registration.showNotification(notificationTitle, notificationOptions);
+    return self.registration.showNotification(title, notificationOptions);
+});
+
+// Catch ALL push events as a final fallback
+self.addEventListener('push', (event) => {
+    console.log('[SW] 📬 RAW PUSH EVENT:', event);
+    if (event.data) {
+        console.log('[SW] Push data:', event.data.text());
+    }
 });
 
 // Handle notification click

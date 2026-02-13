@@ -268,16 +268,15 @@ exports.debugNotify = functions.https.onRequest(async (req, res) => {
 
         if (!fcmToken) return res.status(404).json({ error: 'FCM Token missing in user doc' });
 
+        // Use data-only message so it goes through Firebase SDK handlers
+        // (not the browser's built-in push display which can silently consume notifications)
         const response = await admin.messaging().send({
             token: fcmToken,
-            notification: {
+            data: {
                 title: 'Debug Notification',
-                body: 'If you see this, FCM is working! 🚀'
-            },
-            webpush: {
-                notification: {
-                    icon: '/pwa-192x192.png'
-                }
+                body: 'If you see this, FCM is working! 🚀',
+                type: 'debug',
+                timestamp: Date.now().toString()
             }
         });
 
